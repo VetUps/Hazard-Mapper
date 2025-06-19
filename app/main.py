@@ -1,11 +1,8 @@
-from fastapi import FastAPI, Depends, HTTPException, status, Response
+from fastapi import FastAPI, Depends, HTTPException, status, Response, Cookie
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
-from database import get_db, engine
-import models
-import schemas
-import crud
-import security
+from app.database import get_db, engine
+from app import models, schemas, crud, security
 from datetime import timedelta
 import os
 
@@ -95,7 +92,7 @@ async def logout(response: Response):
 
 @app.get("/users/me", response_model=schemas.User)
 async def get_current_user(
-        session_id: str = Depends(lambda: None),
+        session_id: str = Cookie(None),
         db: Session = Depends(get_db)
 ):
     """

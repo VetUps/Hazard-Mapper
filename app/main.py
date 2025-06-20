@@ -1,11 +1,10 @@
-from fastapi import FastAPI, Depends, HTTPException, status, Response
+from fastapi import FastAPI, Depends, HTTPException, status, Response, Query
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.params import Cookie
 from sqlalchemy.orm import Session
-from database import get_db, engine
-import models
-import schemas
-import crud
-import security
+from starlette.responses import JSONResponse
+from app.database import get_db, engine
+from app import models, schemas, crud, security
 from datetime import timedelta
 import os
 
@@ -15,10 +14,10 @@ app = FastAPI()
 # Настройки
 SESSION_EXPIRE_MINUTES = 60 * 24 * 7  # 7 дней
 
-# CORS (для того, чтобы можно было отправлять запросы  с браузера)
+# CORS (для того, чтобы можно было отправлять запросы с браузера)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:8080"], # Разрешает запросы только с указанных origins
+    allow_origins=["http://localhost:5173"], # Разрешает запросы только с указанных origins
     allow_credentials=True, # Разрешает передачу cookies
     allow_methods=["*"], # Разраешает все HTTP-методы (GET, POST и т.д.)
     allow_headers=["*"], # Разраешает все заголовки
@@ -58,7 +57,7 @@ async def login(
     # Проверка авторизации
     db_user = crud.authenticate_user(db, user.email, user.password)
     if not db_user:
-        raise HTTPException(status_code=401, detail="Invalid credentials")
+        raise HTTPException(status_code=401, detail="Неверные данные")
 
     # Если авторизация удалась, то генерируем JWT токен
     session_token = security.create_session_token(
@@ -77,7 +76,7 @@ async def login(
     )
 
     # Возвращаем reponse
-    return {"message": "Login successful"}
+    return {"message": "Успешный вход"}
 
 
 @app.post("/logout")
@@ -95,7 +94,7 @@ async def logout(response: Response):
 
 @app.get("/users/me", response_model=schemas.User)
 async def get_current_user(
-        session_id: str = Depends(lambda: None),
+        session_id: str = Cookie(lambda: None),
         db: Session = Depends(get_db)
 ):
     """
@@ -119,3 +118,17 @@ async def get_current_user(
 @app.get("/protected")
 async def protected_route(user: schemas.User = Depends(get_current_user)):
     return {"message": f"Hello {user.username}, this is protected!"}
+
+@app.get("/tracks", response_model=list[schemas.Track])
+async def get_all_tracks(
+        db: Session = Depends(get_db),
+        skip: int = Query(0, ge=0),
+        limit: int = Query(10, le=100),
+):
+    tracks = crud.get_tracks(db, skip=skip, limit=limit)
+    total_tracks = db.query(models.Track).count()
+
+    response = JSONResponse(tracks)
+    response.headers["Total-tracks"] = str(total_tracks)
+
+    return response

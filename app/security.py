@@ -40,7 +40,7 @@ def verify_session_token(session_id: Optional[str] = Cookie(None)):
         payload = jwt.decode(session_id, SESSION_SECRET, algorithms=[SESSION_ALGORITHM])
         # Достаём от туда id пользователя
         user_id: str = payload.get("sub")
-        # Если не удаётся то рейзим ошибку либо возвращаем user id
+        # Если не удаётся, то рейзим ошибку либо возвращаем user id
         if user_id is None:
             raise HTTPException(status_code=400, detail="Некорректный токен")
         return user_id

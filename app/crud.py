@@ -4,6 +4,7 @@ from passlib.context import CryptContext
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
+# User CRUD-ы
 def get_user(db: Session, user_id: int):
     return db.query(models.User).filter(models.User.id == user_id).first()
 
@@ -29,3 +30,11 @@ def authenticate_user(db: Session, email: str, password: str):
     if not pwd_context.verify(password, user.password_hash):
         return False
     return user
+
+# Tracks CRUD-ы
+
+def get_track(db: Session, track_id: int):
+    return db.query(models.Track).filter(models.Track.id == track_id).first()
+
+def get_tracks(db: Session, skip: int = 0, limit: int = 100):
+    return db.query(models.Track).offset(skip).limit(limit).all()

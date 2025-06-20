@@ -1,3 +1,5 @@
+from typing import List
+
 from pydantic import BaseModel, EmailStr
 from datetime import datetime, date
 
@@ -36,6 +38,12 @@ class Track(TrackBase):
 
     class Config:
         orm_mode = True
+
+class TrackPaginate(BaseModel):
+    tracks: List[Track]
+    total: int
+    skip: int
+    limit: int
 
 class TrackPointBase(BaseModel):
     point_index: int

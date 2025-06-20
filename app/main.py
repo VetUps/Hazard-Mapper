@@ -119,16 +119,18 @@ async def get_current_user(
 async def protected_route(user: schemas.User = Depends(get_current_user)):
     return {"message": f"Hello {user.username}, this is protected!"}
 
-@app.get("/tracks", response_model=list[schemas.Track])
+@app.get("/tracks", response_model=schemas.TrackPaginate)
 async def get_all_tracks(
         db: Session = Depends(get_db),
-        skip: int = Query(0, ge=0),
-        limit: int = Query(10, le=100),
+        skip: int = Query(0, ge=0, description="Количество пропускаемых записей"),
+        limit: int = Query(10, le=100, description="Максимальное количество записей"),
 ):
     tracks = crud.get_tracks(db, skip=skip, limit=limit)
     total_tracks = db.query(models.Track).count()
 
-    response = JSONResponse(tracks)
-    response.headers["Total-tracks"] = str(total_tracks)
-
-    return response
+    return {
+        "tracks": tracks,
+        "total": total_tracks,
+        "skip": skip,
+        "limit": limit
+    }

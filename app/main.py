@@ -1,11 +1,13 @@
-from fastapi import FastAPI, Depends, HTTPException, status, Response, Query
+from fastapi import FastAPI, Depends, HTTPException, status, Response, Query, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.params import Cookie
+from fastapi.params import Cookie, File, Form
 from sqlalchemy.orm import Session
 from starlette.responses import JSONResponse
 from app.database import get_db, engine
 from app import models, schemas, crud, security
+from app.utils import gpx_utils
 from datetime import timedelta
+import base64
 import os
 
 # Инициализация API
@@ -119,7 +121,7 @@ async def get_current_user(
 async def protected_route(user: schemas.User = Depends(get_current_user)):
     return {"message": f"Hello {user.username}, this is protected!"}
 
-@app.get("/tracks", response_model=schemas.TrackPaginate)
+@app.get("/tracks/load", response_model=schemas.TrackPaginate)
 async def get_all_tracks(
         db: Session = Depends(get_db),
         skip: int = Query(0, ge=0, description="Количество пропускаемых записей"),
@@ -134,3 +136,52 @@ async def get_all_tracks(
         "skip": skip,
         "limit": limit
     }
+
+@app.post("/tracks/upload")
+async def upload_track(
+    title: str = Form(...),
+    description: str | None = Form(None),
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user)
+):
+    # Проверка формата файла
+    if not file.filename.endswith('.gpx'):
+        raise HTTPException(400, "Invalid file format. Only GPX files are accepted.")
+
+    # Чтение и парсинг GPX
+    contents = await file.read()
+    points, stats = gpx_utils.parse_gpx(contents.decode('utf-8'))
+
+    # Генерация изображения
+    image = gpx_utils.generate_track_image(points)
+    region = gpx_utils.get_track_region(points)
+
+    track_data_for_create = schemas.TrackCreate(
+        title=title,
+        description=description,
+        region=region,
+    )
+
+    track = crud.create_track_with_points(
+        db,
+        track_data_for_create,
+        points,
+        image,
+        current_user.id
+    )
+
+    image_base64 = base64.b64encode(image).decode('utf-8')
+
+    return {
+        "track": track,
+        "image": image_base64,
+        "stats": stats
+    }
+
+@app.get("/tracks/{track_id}", response_model=schemas.TrackDetail)
+def get_track_details(track_id: int, db: Session = Depends(get_db)):
+    track = crud.get_track_with_details(db, track_id)
+    if not track:
+        raise HTTPException(404, "Трек не найден")
+    return track

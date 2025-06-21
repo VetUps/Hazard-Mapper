@@ -1,7 +1,8 @@
 from typing import List, Any
 
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from app import models, schemas
+from app.utils import gpx_utils
 from passlib.context import CryptContext
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -40,3 +41,53 @@ def get_track(db: Session, track_id: int):
 
 def get_tracks(db: Session, skip: int = 0, limit: int = 100):
     return db.query(models.Track).offset(skip).limit(limit).all()
+
+
+def create_track_with_points(
+        db: Session,
+        track_data: schemas.TrackCreate,
+        points: list,
+        image: bytes,
+        user_id: int
+):
+    # Создаем трек
+    db_track = models.Track(
+        title=track_data.title,
+        region=track_data.region,
+        description=track_data.description,
+        user_id=user_id
+    )
+    db.add(db_track)
+    db.commit()
+    db.refresh(db_track)
+
+    # Добавляем точки трека
+    for i, point in enumerate(points):
+        db_point = models.TrackPoint(
+            track_id=db_track.id,
+            point_index=i,
+            latitude=point['latitude'],
+            longitude=point['longitude'],
+            elevation=point.get('elevation'),
+            point_time=point.get('time')
+        )
+        db.add(db_point)
+
+    # Добавляем изображение
+    if image:
+        db_image = models.TrackImage(
+            track_id=db_track.id,
+            image=image
+        )
+        db.add(db_image)
+
+    db.commit()
+    return db_track.id
+
+def get_track_with_details(db: Session, track_id: int):
+    return db.query(models.Track).\
+        options(
+            joinedload(models.Track.points),
+            joinedload(models.Track.images),
+            joinedload(models.Track.owner)
+        ).filter(models.Track.id == track_id).first()

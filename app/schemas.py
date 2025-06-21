@@ -1,8 +1,14 @@
 from typing import List
 
+from fastapi import UploadFile
+from fastapi.params import File, Form
 from pydantic import BaseModel, EmailStr
 from datetime import datetime, date
 
+from app.models import TrackPoint
+
+
+# Схемы пользователя
 class UserBase(BaseModel):
     email: EmailStr
     username: str
@@ -23,13 +29,19 @@ class User(UserBase):
     class Config:
         orm_mode = True
 
+
+# Схемы треков
 class TrackBase(BaseModel):
     title: str
     region: str | None = None
     description: str | None = None
 
-class TrackCreate(TrackBase):
-    pass
+class TrackPointBase(BaseModel):
+    point_index: int
+    latitude: float
+    longitude: float
+    elevation: float | None = None
+    point_time: datetime | None = None
 
 class Track(TrackBase):
     id: int
@@ -39,21 +51,33 @@ class Track(TrackBase):
     class Config:
         orm_mode = True
 
+class TrackCreate(TrackBase):
+    pass
+
+class TrackDetail(Track):
+    points: List[TrackPointBase] = []
+    image: str
+    owner: User
+
+    class Config:
+        orm_mode = True
+
+class TrackStats(BaseModel):
+    total_distance: float
+    avg_elevation: float
+    min_elevation: float
+    max_elevation: float
+
+class TrackUpload(BaseModel):
+    title: str = Form(...)
+    description: str = Form(None)
+    file: UploadFile = File(...)
+
 class TrackPaginate(BaseModel):
     tracks: List[Track]
     total: int
     skip: int
     limit: int
-
-class TrackPointBase(BaseModel):
-    point_index: int
-    latitude: float
-    longitude: float
-    elevation: float | None = None
-    point_time: datetime | None = None
-
-class TrackPointCreate(TrackPointBase):
-    pass
 
 class TrackPoint(TrackPointBase):
     id: int
@@ -62,6 +86,7 @@ class TrackPoint(TrackPointBase):
     class Config:
         orm_mode = True
 
+# Схемы прогнозирования
 class FireForecastBase(BaseModel):
     forecast_date: date
     temp: float | None = None
@@ -86,6 +111,8 @@ class FireForecast(FireForecastBase):
     class Config:
         orm_mode = True
 
+
+# Схемы комментариев
 class CommentBase(BaseModel):
     content: str
 
@@ -101,6 +128,8 @@ class Comment(CommentBase):
     class Config:
         orm_mode = True
 
+
+# Схемы избранного
 class FavoriteBase(BaseModel):
     track_id: int
 

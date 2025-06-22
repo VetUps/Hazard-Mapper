@@ -29,6 +29,10 @@ class User(UserBase):
     class Config:
         orm_mode = True
 
+class UserUpdate(BaseModel):
+    username: str | None = None
+    email: EmailStr | None = None
+    password: str | None = None
 
 # Схемы треков
 class TrackBase(BaseModel):
@@ -50,7 +54,7 @@ class Track(TrackBase):
     id: int
     user_id: int
     created_at: datetime
-    is_favorite: bool | None = None  # Будет заполнено только при запросе авторизованного пользователя
+    is_favorite: bool | None = None
 
     class Config:
         orm_mode = True

@@ -14,6 +14,9 @@ def get_user(db: Session, user_id: int):
 def get_user_by_email(db: Session, email: str):
     return db.query(models.User).filter(models.User.email == email).first()
 
+def get_user_by_username(db: Session, username: str):
+    return db.query(models.User).filter(models.User.username == username).first()
+
 def create_user(db: Session, user: schemas.UserCreate):
     hashed_password = pwd_context.hash(user.password)
     db_user = models.User(
@@ -25,6 +28,22 @@ def create_user(db: Session, user: schemas.UserCreate):
     db.commit()
     db.refresh(db_user)
     return db_user
+
+def update_user(db: Session, user_data: schemas.UserUpdate, current_user: models.User):
+
+    # Обновляем поля
+    if user_data.username:
+        current_user.username = user_data.username
+    if user_data.email:
+        current_user.email = user_data.email
+    if user_data.password:
+        hashed_password = pwd_context.hash(user_data.password)
+        current_user.password_hash = hashed_password
+
+    db.commit()
+    db.refresh(current_user)
+    return current_user
+
 
 def authenticate_user(db: Session, email: str, password: str):
     user = get_user_by_email(db, email)
@@ -41,6 +60,9 @@ def get_track(db: Session, track_id: int):
 
 def get_tracks(db: Session, skip: int = 0, limit: int = 100):
     return db.query(models.Track).offset(skip).limit(limit).all()
+
+def get_tracks_by_user(db: Session, user_id: int, skip: int = 0, limit: int = 100):
+    return db.query(models.Track).filter(models.Track.user_id == user_id).offset(skip).limit(limit).all()
 
 
 def create_track_with_points(
@@ -94,6 +116,13 @@ def get_track_with_details(db: Session, track_id: int):
             joinedload(models.Track.images),
             joinedload(models.Track.owner)
         ).filter(models.Track.id == track_id).first()
+
+def delete_track(db: Session, track_id: int):
+    track = get_track(db, track_id)
+    db.delete(track)
+    db.commit()
+    return {"message":"Успех"}
+
 
 # Избранное CRUD-ы
 def add_to_favorites(db: Session, user_id: int, track_id: int):

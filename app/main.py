@@ -9,6 +9,7 @@ from app.utils import gpx_utils
 from datetime import timedelta
 import base64
 import os
+import uvicorn
 
 # Инициализация API
 app = FastAPI()
@@ -116,12 +117,56 @@ async def get_current_user(
         raise HTTPException(status_code=404, detail="User not found")
     return user
 
+
+# Обновление данных пользователя
+@app.put("/users/me", response_model=schemas.User)
+async def update_current_user(
+        user_data: schemas.UserUpdate,
+        db: Session = Depends(get_db),
+        current_user: models.User = Depends(get_current_user)
+):
+    # Проверка уникальности email
+    if user_data.email and user_data.email != current_user.email:
+        existing_user = crud.get_user_by_email(db, user_data.email)
+        if existing_user:
+            raise HTTPException(status_code=400, detail="Пользователь с такой почтой уже существует")
+
+    # Проверка уникальности username
+    if user_data.username and user_data.username != current_user.username:
+        existing_user = crud.get_user_by_username(db, user_data.username)
+        if existing_user:
+            raise HTTPException(status_code=400, detail="Пользователь с таким ником ежуе существует")
+
+    # Обновляем поля
+    current_user = crud.update_user(db, user_data, current_user)
+    return current_user
+
 @app.get("/users/{user_id}", response_model=schemas.User)
 async def get_user_data(user_id: int, db: Session = Depends(get_db)):
     user = crud.get_user(db, user_id)
     if not user:
         raise HTTPException(404, "Пользователь не найден")
     return user
+
+
+# Получение треков пользователя
+@app.get("/users/me/tracks", response_model=schemas.TrackPaginate)
+async def get_current_user_tracks(
+        db: Session = Depends(get_db),
+        current_user: models.User = Depends(get_current_user),
+        skip: int = Query(0, ge=0, description="Количество пропускаемых записей"),
+        limit: int = Query(10, le=100, description="Максимальное количество записей"),
+):
+    tracks = crud.get_tracks_by_user(db, current_user.id, skip, limit)
+
+    total_tracks = len(tracks)
+
+    return {
+        "tracks": tracks,
+        "total": total_tracks,
+        "skip": skip,
+        "limit": limit
+    }
 
 @app.get("/protected")
 async def protected_route(user: schemas.User = Depends(get_current_user)):
@@ -141,6 +186,10 @@ async def get_all_tracks(
     if current_user:
         for track in tracks:
             track.is_favorite = crud.is_favorite(db, current_user.id, track.id)
+    else:
+        # Для неавторизованных устанавливаем false
+        for track in tracks:
+            track.is_favorite = False
 
     return {
         "tracks": tracks,
@@ -202,6 +251,25 @@ def get_track_details(track_id: int, db: Session = Depends(get_db)):
     return track
 
 
+# Удаление трека
+@app.delete("/tracks/{track_id}")
+async def delete_track(
+        track_id: int,
+        db: Session = Depends(get_db),
+        current_user: models.User = Depends(get_current_user)
+):
+    track = crud.get_track(db, track_id)
+
+    # Проверяем, что трек принадлежит пользователю
+    if not track or track.user_id != current_user.id:
+        raise HTTPException(status_code=404, detail="Отказано в доступе")
+
+    # Удаляем трек и все связанные данные
+    crud.delete_track(db, track_id)
+
+    return {"message": "Трек успешно удалён"}
+
+
 # Добавим эндпоинты для работы с избранным
 @app.post("/tracks/{track_id}/favorite", response_model=schemas.Track)
 async def favorite_track(
@@ -247,9 +315,15 @@ async def get_favorite_tracks(
         models.Favorite.user_id == current_user.id
     ).count()
 
+    for track in tracks:
+        track.is_favorite = True
+
     return {
         "tracks": tracks,
         "total": total_tracks,
         "skip": skip,
         "limit": limit
     }
+
+if __name__ == "__main__":
+    uvicorn.run(app, host="0.0.0.0", port=8000)

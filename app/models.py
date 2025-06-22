@@ -32,10 +32,10 @@ class Track(Base):
     created_at = Column(TIMESTAMP, server_default="CURRENT_TIMESTAMP")
 
     owner = relationship("User", back_populates="tracks")
-    points = relationship("TrackPoint", back_populates="track")
-    forecasts = relationship("FireForecast", back_populates="track")
-    comments = relationship("Comment", back_populates="track")
-    images = relationship("TrackImage", back_populates="track")
+    points = relationship("TrackPoint", back_populates="track", cascade="all, delete-orphan", passive_deletes=True)
+    forecasts = relationship("FireForecast", back_populates="track", cascade="all, delete-orphan", passive_deletes=True)
+    comments = relationship("Comment", back_populates="track", cascade="all, delete-orphan", passive_deletes=True)
+    images = relationship("TrackImage", back_populates="track", cascade="all, delete-orphan", passive_deletes=True)
 
 
 class TrackPoint(Base):
@@ -103,5 +103,5 @@ class Favorite(Base):
     __tablename__ = "favorites"
 
     user_id = Column(Integer, ForeignKey("users.id"), primary_key=True)
-    track_id = Column(Integer, ForeignKey("tracks.id"), primary_key=True)
+    track_id = Column(Integer, ForeignKey("tracks.id", ondelete="CASCADE"), primary_key=True)
     created_at = Column(TIMESTAMP, server_default="CURRENT_TIMESTAMP")

@@ -12,6 +12,24 @@ import geocoder
 from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
 
 
+def calculate_difficulty(distance_km, elevation_gain):
+    """
+    Рассчитывает сложность трека по шкале 1-5
+    :param distance_km: общая длина трека
+    :param elevation_gain: общий набор высоты на всём треке
+    :return: число от 1 до 5
+    """
+    # Коэффициенты для расчета
+    distance_factor = distance_km / 20  # 20 км = сложность 1
+    elevation_factor = elevation_gain / 1000  # 1000м набора = сложность 1
+
+    # Формула сложности (можно настроить)
+    raw_score = distance_factor + elevation_factor * 1.5
+
+    # Ограничиваем от 1 до 5
+    difficulty = max(1, min(5, round(raw_score)))
+    return difficulty
+
 def parse_gpx(gpx_content: str) -> Tuple[List[dict], dict]:
     """
     Парсит .gpx контент
@@ -55,9 +73,26 @@ def parse_gpx(gpx_content: str) -> Tuple[List[dict], dict]:
                     total_distance += point.distance_2d(prev_point)
                 prev_point = point
 
+    # Рассчитываем набор высоты
+    elevation_gain = 0
+    prev_elevation = None
+    elevations = []
+    for point in points:
+        if point['elevation'] is not None:
+            elevations.append(point['elevation'])
+            if prev_elevation is not None and point['elevation'] > prev_elevation:
+                elevation_gain += point['elevation'] - prev_elevation
+            prev_elevation = point['elevation']
+
+    # Рассчитываем сложность
+    distance_km = total_distance / 1000
+    difficulty = calculate_difficulty(distance_km, elevation_gain)
+
     # Вычисляем характеристики трека
     stats = {
         'total_distance': total_distance,
+        'elevation_gain': elevation_gain,
+        'difficulty': difficulty,
         'avg_elevation': np.mean(elevations) if elevations else 0,
         'min_elevation': min(elevations) if elevations else 0,
         'max_elevation': max(elevations) if elevations else 0,

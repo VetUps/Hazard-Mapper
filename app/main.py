@@ -116,6 +116,12 @@ async def get_current_user(
         raise HTTPException(status_code=404, detail="User not found")
     return user
 
+@app.get("/users/{user_id}", response_model=schemas.User)
+async def get_user_data(user_id: int, db: Session = Depends(get_db)):
+    user = crud.get_user(db, user_id)
+    if not user:
+        raise HTTPException(404, "Пользователь не найден")
+    return user
 
 @app.get("/protected")
 async def protected_route(user: schemas.User = Depends(get_current_user)):
@@ -154,13 +160,16 @@ async def upload_track(
     points, stats = gpx_utils.parse_gpx(contents.decode('utf-8'))
 
     # Генерация изображения
-    image = gpx_utils.generate_track_image(points)
+    image = bytes(1)#gpx_utils.generate_track_image(points)
     region = gpx_utils.get_track_region(points)
 
     track_data_for_create = schemas.TrackCreate(
         title=title,
         description=description,
         region=region,
+        total_distance=stats["total_distance"],
+        elevation_gain=stats["elevation_gain"],
+        difficulty=stats["difficulty"],
     )
 
     track = crud.create_track_with_points(

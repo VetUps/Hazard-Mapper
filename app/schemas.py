@@ -35,6 +35,9 @@ class TrackBase(BaseModel):
     title: str
     region: str | None = None
     description: str | None = None
+    total_distance: float
+    elevation_gain: float
+    difficulty: int
 
 class TrackPointBase(BaseModel):
     point_index: int

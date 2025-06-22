@@ -26,6 +26,9 @@ class Track(Base):
     title = Column(String(255), nullable=False)
     region = Column(String(255))
     description = Column(Text)
+    total_distance = Column(Float, default=0.0)  # общая дистанция в метрах
+    elevation_gain = Column(Float, default=0.0)  # суммарный набор высоты
+    difficulty = Column(Integer, default=0)  # общая сложность 1-5
     created_at = Column(TIMESTAMP, server_default="CURRENT_TIMESTAMP")
 
     owner = relationship("User", back_populates="tracks")

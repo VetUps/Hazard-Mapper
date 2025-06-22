@@ -55,6 +55,9 @@ def create_track_with_points(
         title=track_data.title,
         region=track_data.region,
         description=track_data.description,
+        total_distance=track_data.total_distance,
+        elevation_gain=track_data.elevation_gain,
+        difficulty=track_data.difficulty,
         user_id=user_id
     )
     db.add(db_track)

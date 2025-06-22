@@ -130,11 +130,17 @@ async def protected_route(user: schemas.User = Depends(get_current_user)):
 @app.get("/tracks/load", response_model=schemas.TrackPaginate)
 async def get_all_tracks(
         db: Session = Depends(get_db),
+        current_user: models.User = Depends(get_current_user, use_cache=False),
         skip: int = Query(0, ge=0, description="Количество пропускаемых записей"),
         limit: int = Query(10, le=100, description="Максимальное количество записей"),
 ):
     tracks = crud.get_tracks(db, skip=skip, limit=limit)
     total_tracks = db.query(models.Track).count()
+
+    # Добавляем флаг избранного для авторизованных пользователей
+    if current_user:
+        for track in tracks:
+            track.is_favorite = crud.is_favorite(db, current_user.id, track.id)
 
     return {
         "tracks": tracks,
@@ -194,3 +200,56 @@ def get_track_details(track_id: int, db: Session = Depends(get_db)):
     if not track:
         raise HTTPException(404, "Трек не найден")
     return track
+
+
+# Добавим эндпоинты для работы с избранным
+@app.post("/tracks/{track_id}/favorite", response_model=schemas.Track)
+async def favorite_track(
+        track_id: int,
+        db: Session = Depends(get_db),
+        current_user: models.User = Depends(get_current_user)
+):
+    track = crud.get_track(db, track_id)
+    if not track:
+        raise HTTPException(status_code=404, detail="Трек не найден")
+
+    crud.add_to_favorites(db, current_user.id, track_id)
+    # Обновляем флаг избранного
+    track.is_favorite = True
+    return track
+
+
+@app.delete("/tracks/{track_id}/favorite", response_model=schemas.Track)
+async def unfavorite_track(
+        track_id: int,
+        db: Session = Depends(get_db),
+        current_user: models.User = Depends(get_current_user)
+):
+    track = crud.get_track(db, track_id)
+    if not track:
+        raise HTTPException(status_code=404, detail="Трек не найден")
+
+    crud.remove_from_favorites(db, current_user.id, track_id)
+    # Обновляем флаг избранного
+    track.is_favorite = False
+    return track
+
+
+@app.get("/favorites", response_model=schemas.TrackPaginate)
+async def get_favorite_tracks(
+        db: Session = Depends(get_db),
+        current_user: models.User = Depends(get_current_user),
+        skip: int = Query(0, ge=0, description="Количество пропускаемых записей"),
+        limit: int = Query(10, le=100, description="Максимальное количество записей"),
+):
+    tracks = crud.get_favorite_tracks(db, current_user.id, skip, limit)
+    total_tracks = db.query(models.Favorite).filter(
+        models.Favorite.user_id == current_user.id
+    ).count()
+
+    return {
+        "tracks": tracks,
+        "total": total_tracks,
+        "skip": skip,
+        "limit": limit
+    }

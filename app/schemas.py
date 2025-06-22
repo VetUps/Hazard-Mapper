@@ -50,6 +50,7 @@ class Track(TrackBase):
     id: int
     user_id: int
     created_at: datetime
+    is_favorite: bool | None = None  # Будет заполнено только при запросе авторизованного пользователя
 
     class Config:
         orm_mode = True
@@ -57,7 +58,10 @@ class Track(TrackBase):
 class TrackCreate(TrackBase):
     pass
 
-class TrackDetail(Track):
+class TrackDetail(BaseModel):
+    id: int
+    user_id: int
+    created_at: datetime
     points: List[TrackPointBase] = []
     image: str
     owner: User

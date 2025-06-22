@@ -94,3 +94,43 @@ def get_track_with_details(db: Session, track_id: int):
             joinedload(models.Track.images),
             joinedload(models.Track.owner)
         ).filter(models.Track.id == track_id).first()
+
+# Избранное CRUD-ы
+def add_to_favorites(db: Session, user_id: int, track_id: int):
+    # Проверяем, не добавлен ли уже трек
+    existing_fav = db.query(models.Favorite).filter(
+        models.Favorite.user_id == user_id,
+        models.Favorite.track_id == track_id
+    ).first()
+
+    if existing_fav:
+        return existing_fav
+
+    fav = models.Favorite(user_id=user_id, track_id=track_id)
+    db.add(fav)
+    db.commit()
+    db.refresh(fav)
+    return fav
+
+def remove_from_favorites(db: Session, user_id: int, track_id: int):
+    fav = db.query(models.Favorite).filter(
+        models.Favorite.user_id == user_id,
+        models.Favorite.track_id == track_id
+    ).first()
+
+    if fav:
+        db.delete(fav)
+        db.commit()
+        return True
+    return False
+
+def get_favorite_tracks(db: Session, user_id: int, skip: int = 0, limit: int = 100):
+    return db.query(models.Track).join(models.Favorite).filter(
+        models.Favorite.user_id == user_id
+    ).offset(skip).limit(limit).all()
+
+def is_favorite(db: Session, user_id: int, track_id: int):
+    return db.query(models.Favorite).filter(
+        models.Favorite.user_id == user_id,
+        models.Favorite.track_id == track_id
+    ).first() is not None

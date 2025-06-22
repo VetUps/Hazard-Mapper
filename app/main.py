@@ -175,7 +175,7 @@ async def upload_track(
 
     return {
         "track": track,
-        "image": image_base64,
+        "points": points,
         "stats": stats
     }
 

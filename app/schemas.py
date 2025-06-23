@@ -34,6 +34,15 @@ class UserUpdate(BaseModel):
     email: EmailStr | None = None
     password: str | None = None
 
+class UserPaginate(BaseModel):
+    users: List[User]
+    total: int
+    skip: int
+    limit: int
+
+class UserActiveUpdate(BaseModel):
+    is_active: bool
+
 # Схемы комментариев
 class CommentBase(BaseModel):
     content: str

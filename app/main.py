@@ -40,7 +40,7 @@ def register_user(user: schemas.UserCreate, db: Session = Depends(get_db)):
     """
     db_user = crud.get_user_by_email(db, user.email)
     if db_user:
-        raise HTTPException(status_code=400, detail="Email already registered")
+        raise HTTPException(status_code=400, detail="Почта уже существует")
     return crud.create_user(db, user)
 
 
@@ -61,6 +61,9 @@ async def login(
     db_user = crud.authenticate_user(db, user.email, user.password)
     if not db_user:
         raise HTTPException(status_code=401, detail="Неверные данные")
+
+    if not db_user.is_active:
+        raise HTTPException(status_code=401, detail="Пользователь деактивирован!")
 
     # Если авторизация удалась, то генерируем JWT токен
     session_token = security.create_session_token(
@@ -92,7 +95,7 @@ async def logout(response: Response):
     # Отчищаем куки
     response.delete_cookie("session_id")
     # Возвращаем reponse
-    return {"message": "Logout successful"}
+    return {"message": "Успешный выход"}
 
 
 @app.get("/users/me", response_model=schemas.User)
@@ -114,7 +117,7 @@ async def get_current_user(
     user_id = security.verify_session_token(session_id)
     user = crud.get_user(db, int(user_id))
     if not user:
-        raise HTTPException(status_code=404, detail="User not found")
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
     return user
 
 
@@ -141,6 +144,22 @@ async def update_current_user(
     current_user = crud.update_user(db, user_data, current_user)
     return current_user
 
+@app.put("/admin/users/{user_id}/active", response_model=schemas.User)
+async def update_user_active(
+        user_id: int,
+        active_data: schemas.UserActiveUpdate,
+        db: Session = Depends(get_db),
+        current_user: models.User = Depends(get_current_user)
+):
+    if not current_user.is_admin:
+        raise HTTPException(status_code=403, detail="Нет доступа")
+
+    user = crud.update_user_active(db, user_id, active_data.is_active)
+    if not user:
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
+
+    return user
+
 @app.get("/users/{user_id}", response_model=schemas.User)
 async def get_user_data(user_id: int, db: Session = Depends(get_db)):
     user = crud.get_user(db, user_id)
@@ -149,7 +168,6 @@ async def get_user_data(user_id: int, db: Session = Depends(get_db)):
     return user
 
 
-# Получение треков пользователя
 @app.get("/users/me/tracks", response_model=schemas.TrackPaginate)
 async def get_current_user_tracks(
         db: Session = Depends(get_db),
@@ -159,11 +177,31 @@ async def get_current_user_tracks(
 ):
     tracks = crud.get_tracks_by_user(db, current_user.id, skip, limit)
 
-    total_tracks = len(tracks)
+    total_tracks = len(db.query(models.Track).filter(models.Track.user_id == current_user.id).all())
 
     return {
         "tracks": tracks,
         "total": total_tracks,
+        "skip": skip,
+        "limit": limit
+    }
+
+@app.get("/admin/users", response_model=schemas.UserPaginate)
+async def get_all_users(
+        skip: int = Query(0, ge=0, description="Количество пропускаемых записей"),
+        limit: int = Query(10, le=100, description="Максимальное количество записей"),
+        db: Session = Depends(get_db),
+        current_user: models.User = Depends(get_current_user)
+):
+    if not current_user.is_admin:
+        raise HTTPException(status_code=403, detail="Нет доступа")
+
+    users = crud.get_all_users(db, skip, limit, current_user.id)
+    total = len(db.query(models.User).all())
+
+    return {
+        "users": users,
+        "total": total,
         "skip": skip,
         "limit": limit
     }
@@ -208,7 +246,7 @@ async def upload_track(
 ):
     # Проверка формата файла
     if not file.filename.endswith('.gpx'):
-        raise HTTPException(400, "Invalid file format. Only GPX files are accepted.")
+        raise HTTPException(400, "Неверный формат файла (Только .gpx)")
 
     # Чтение и парсинг GPX
     contents = await file.read()
@@ -260,7 +298,7 @@ async def update_track(
 ):
     # Проверяем, что трек существует и принадлежит пользователю
     track = crud.get_track(db, track_id)
-    if not track or track.user_id != current_user.id:
+    if not current_user.is_admin and (not track or track.user_id != current_user.id):
         raise HTTPException(status_code=404, detail="Трек не найден или у вас нет прав")
 
     updated_track = crud.update_track(db, track_id, track_data)
@@ -279,7 +317,7 @@ async def delete_track(
     track = crud.get_track(db, track_id)
 
     # Проверяем, что трек принадлежит пользователю
-    if not track or track.user_id != current_user.id:
+    if not track or (track.user_id != current_user.id and not current_user.is_admin):
         raise HTTPException(status_code=404, detail="Отказано в доступе")
 
     # Удаляем трек и все связанные данные

@@ -11,6 +11,11 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 def get_user(db: Session, user_id: int):
     return db.query(models.User).filter(models.User.id == user_id).first()
 
+def get_all_users(db: Session, skip: int = 0, limit: int = 100, user_id: int = None):
+    if user_id:
+        return db.query(models.User).filter(models.User.id != user_id).all()
+    return db.query(models.User).offset(skip).limit(limit).all()
+
 def get_user_by_email(db: Session, email: str):
     return db.query(models.User).filter(models.User.email == email).first()
 
@@ -44,6 +49,13 @@ def update_user(db: Session, user_data: schemas.UserUpdate, current_user: models
     db.refresh(current_user)
     return current_user
 
+def update_user_active(db: Session, user_id: int, is_active: bool):
+    user = db.query(models.User).filter(models.User.id == user_id).first()
+    if user:
+        user.is_active = is_active
+        db.commit()
+        db.refresh(user)
+    return user
 
 def authenticate_user(db: Session, email: str, password: str):
     user = get_user_by_email(db, email)

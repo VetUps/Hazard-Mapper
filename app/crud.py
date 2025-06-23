@@ -58,6 +58,22 @@ def authenticate_user(db: Session, email: str, password: str):
 def get_track(db: Session, track_id: int):
     return db.query(models.Track).filter(models.Track.id == track_id).first()
 
+
+def update_track(db: Session, track_id: int, track_data: schemas.TrackUpdate):
+    db_track = db.query(models.Track).filter(models.Track.id == track_id).first()
+
+    if not db_track:
+        return None
+
+    if track_data.title:
+        db_track.title = track_data.title
+    if track_data.description is not None:
+        db_track.description = track_data.description
+
+    db.commit()
+    db.refresh(db_track)
+    return db_track
+
 def get_tracks(db: Session, skip: int = 0, limit: int = 100):
     return db.query(models.Track).offset(skip).limit(limit).all()
 

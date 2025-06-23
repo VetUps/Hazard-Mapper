@@ -250,12 +250,24 @@ def get_track_details(track_id: int, db: Session = Depends(get_db)):
         raise HTTPException(404, "Трек не найден")
     return track
 
-@app.put("/tracks/{track_id}", response_model=schemas.TrackDetail)
-def get_track_details(track_id: int, db: Session = Depends(get_db)):
+
+@app.put("/tracks/{track_id}", response_model=schemas.Track)
+async def update_track(
+        track_id: int,
+        track_data: schemas.TrackUpdate,
+        db: Session = Depends(get_db),
+        current_user: models.User = Depends(get_current_user)
+):
+    # Проверяем, что трек существует и принадлежит пользователю
     track = crud.get_track(db, track_id)
-    if not track:
-        raise HTTPException(404, "Трек не найден")
-    return track
+    if not track or track.user_id != current_user.id:
+        raise HTTPException(status_code=404, detail="Трек не найден или у вас нет прав")
+
+    updated_track = crud.update_track(db, track_id, track_data)
+    if not updated_track:
+        raise HTTPException(status_code=404, detail="Трек не найден")
+
+    return updated_track
 
 # Удаление трека
 @app.delete("/tracks/{track_id}")

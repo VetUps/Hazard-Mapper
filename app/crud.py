@@ -114,7 +114,8 @@ def get_track_with_details(db: Session, track_id: int):
         options(
             joinedload(models.Track.points),
             joinedload(models.Track.images),
-            joinedload(models.Track.owner)
+            joinedload(models.Track.owner),
+            joinedload(models.Track.comments).joinedload(models.Comment.author)
         ).filter(models.Track.id == track_id).first()
 
 def delete_track(db: Session, track_id: int):
@@ -163,3 +164,16 @@ def is_favorite(db: Session, user_id: int, track_id: int):
         models.Favorite.user_id == user_id,
         models.Favorite.track_id == track_id
     ).first() is not None
+
+# Комментарии CRUD-ы
+def create_comment(db: Session, comment_data: schemas.CommentCreate, user_id: int, track_id: int):
+    db_comment = models.Comment(
+        content=comment_data.content,
+        user_id=user_id,
+        track_id=track_id
+    )
+
+    db.add(db_comment)
+    db.commit()
+    db.refresh(db_comment)
+    return db_comment

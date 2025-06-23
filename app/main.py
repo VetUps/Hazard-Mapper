@@ -97,7 +97,7 @@ async def logout(response: Response):
 
 @app.get("/users/me", response_model=schemas.User)
 async def get_current_user(
-        session_id: str = Cookie(lambda: None),
+        session_id: str = Cookie(default=None),
         db: Session = Depends(get_db)
 ):
     """
@@ -108,7 +108,7 @@ async def get_current_user(
     """
     # Если куки не установлены, то вызваем ошибку
     if not session_id:
-        raise HTTPException(status_code=401, detail="Unauthorized")
+        return None
 
     # Иначе находим и возвращаем пользователя
     user_id = security.verify_session_token(session_id)
@@ -250,6 +250,12 @@ def get_track_details(track_id: int, db: Session = Depends(get_db)):
         raise HTTPException(404, "Трек не найден")
     return track
 
+@app.put("/tracks/{track_id}", response_model=schemas.TrackDetail)
+def get_track_details(track_id: int, db: Session = Depends(get_db)):
+    track = crud.get_track(db, track_id)
+    if not track:
+        raise HTTPException(404, "Трек не найден")
+    return track
 
 # Удаление трека
 @app.delete("/tracks/{track_id}")
@@ -302,6 +308,15 @@ async def unfavorite_track(
     track.is_favorite = False
     return track
 
+@app.post("/tracks/{track_id}/comments", response_model=schemas.Comment)
+async def create_comment(
+    track_id: int,
+    comment_data: schemas.CommentCreate,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user)
+):
+    db_comment = crud.create_comment(db, comment_data, current_user.id, track_id)
+    return db_comment
 
 @app.get("/favorites", response_model=schemas.TrackPaginate)
 async def get_favorite_tracks(

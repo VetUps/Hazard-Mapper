@@ -5,7 +5,7 @@ from fastapi.params import File, Form
 from pydantic import BaseModel, EmailStr
 from datetime import datetime, date
 
-from app.models import TrackPoint
+from app.models import TrackPoint, TrackImage
 
 
 # Схемы пользователя
@@ -33,6 +33,29 @@ class UserUpdate(BaseModel):
     username: str | None = None
     email: EmailStr | None = None
     password: str | None = None
+
+# Схемы комментариев
+class CommentBase(BaseModel):
+    content: str
+
+class CommentCreate(BaseModel):
+    content: str
+
+class Comment(CommentBase):
+    id: int
+    user_id: int
+    track_id: int
+    created_at: datetime
+
+    class Config:
+        orm_mode = True
+
+
+class CommentWithAuthor(Comment):
+    author: User
+
+    class Config:
+        orm_mode = True
 
 # Схемы треков
 class TrackBase(BaseModel):
@@ -62,13 +85,10 @@ class Track(TrackBase):
 class TrackCreate(TrackBase):
     pass
 
-class TrackDetail(BaseModel):
-    id: int
-    user_id: int
-    created_at: datetime
-    points: List[TrackPointBase] = []
-    image: str
+class TrackDetail(Track):
     owner: User
+    points: List[TrackPointBase] = []
+    comments: List[CommentWithAuthor] = []
 
     class Config:
         orm_mode = True
@@ -83,6 +103,10 @@ class TrackUpload(BaseModel):
     title: str = Form(...)
     description: str = Form(None)
     file: UploadFile = File(...)
+
+class TrackUpdate(BaseModel):
+    title: str | None = None
+    description: str | None = None
 
 class TrackPaginate(BaseModel):
     tracks: List[Track]
@@ -121,24 +145,6 @@ class FireForecast(FireForecastBase):
 
     class Config:
         orm_mode = True
-
-
-# Схемы комментариев
-class CommentBase(BaseModel):
-    content: str
-
-class CommentCreate(CommentBase):
-    pass
-
-class Comment(CommentBase):
-    id: int
-    user_id: int
-    track_id: int
-    created_at: datetime
-
-    class Config:
-        orm_mode = True
-
 
 # Схемы избранного
 class FavoriteBase(BaseModel):

@@ -35,8 +35,6 @@ def create_user(db: Session, user: schemas.UserCreate):
     return db_user
 
 def update_user(db: Session, user_data: schemas.UserUpdate, current_user: models.User):
-
-    # Обновляем поля
     if user_data.username:
         current_user.username = user_data.username
     if user_data.email:
@@ -100,7 +98,6 @@ def create_track_with_points(
         image: bytes,
         user_id: int
 ):
-    # Создаем трек
     db_track = models.Track(
         title=track_data.title,
         region=track_data.region,
@@ -114,7 +111,6 @@ def create_track_with_points(
     db.commit()
     db.refresh(db_track)
 
-    # Добавляем точки трека
     for i, point in enumerate(points):
         db_point = models.TrackPoint(
             track_id=db_track.id,
@@ -126,7 +122,6 @@ def create_track_with_points(
         )
         db.add(db_point)
 
-    # Добавляем изображение
     if image:
         db_image = models.TrackImage(
             track_id=db_track.id,

@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Depends, HTTPException, status, Response, Query, UploadFile
+from fastapi import FastAPI, Depends, HTTPException, status, Response, Query, UploadFile, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.params import Cookie, File, Form
 from sqlalchemy.orm import Session
@@ -10,6 +10,9 @@ from datetime import timedelta
 import base64
 import os
 import uvicorn
+from fastapi.responses import HTMLResponse
+from fastapi.templating import Jinja2Templates
+from app.utils.fire_risk_service import generate_risk_map
 
 # Инициализация API
 app = FastAPI()
@@ -26,21 +29,26 @@ app.add_middleware(
     allow_headers=["*"], # Разраешает все заголовки
 )
 
-# Создание таблиц
-# models.Base.metadata.create_all(bind=engine)
+templates = Jinja2Templates(directory="app/templates")
 
 
 @app.post("/register", response_model=schemas.User)
-def register_user(user: schemas.UserCreate, db: Session = Depends(get_db)):
+async def register_user(user: schemas.UserCreate, db: Session = Depends(get_db)):
     """
-    Эндпоинт для регистрации нового юзера по указанным данным
-    :param user: Pydantic схема для валидации данных
-    :param db: # Сессия с БД
-    :return: Pydantic схема пользователя без пароля
+    Эндпоинт для регистрации нового юзера
+    :param user: данные нового пользователя
+    :param db: сессия с БД
+    :return: данные зарегистрированного пользователя
     """
+    # Проверяем уникальность почты
     db_user = crud.get_user_by_email(db, user.email)
     if db_user:
         raise HTTPException(status_code=400, detail="Почта уже существует")
+
+    db_user = crud.get_user_by_username(db, user.username)
+    if db_user:
+        raise HTTPException(status_code=400, detail="Никнейм уже занят")
+    # Регистрируем пользователя
     return crud.create_user(db, user)
 
 
@@ -81,7 +89,7 @@ async def login(
         samesite="lax",
     )
 
-    # Возвращаем reponse
+    # Возвращаем response
     return {"message": "Успешный вход"}
 
 
@@ -94,7 +102,7 @@ async def logout(response: Response):
     """
     # Отчищаем куки
     response.delete_cookie("session_id")
-    # Возвращаем reponse
+    # Возвращаем response
     return {"message": "Успешный выход"}
 
 
@@ -121,13 +129,19 @@ async def get_current_user(
     return user
 
 
-# Обновление данных пользователя
 @app.put("/users/me", response_model=schemas.User)
 async def update_current_user(
         user_data: schemas.UserUpdate,
         db: Session = Depends(get_db),
         current_user: models.User = Depends(get_current_user)
 ):
+    """
+    Эндпоинт для обновления профиля пользователя
+    :param user_data: новые данные о пользователе
+    :param db: сессия БД
+    :param current_user: текущий пользователь
+    :return: обновлённый пользователь
+    """
     # Проверка уникальности email
     if user_data.email and user_data.email != current_user.email:
         existing_user = crud.get_user_by_email(db, user_data.email)
@@ -151,9 +165,19 @@ async def update_user_active(
         db: Session = Depends(get_db),
         current_user: models.User = Depends(get_current_user)
 ):
-    if not current_user.is_admin:
+    """
+    Эндпоинт для обновления статуса пользователя
+    :param user_id: id обновляемого пользователя
+    :param active_data: нова информация о пользователе
+    :param db: сессия БД
+    :param current_user: текущий пользователь
+    :return: пользователь с новыми данными
+    """
+    # Проверяем является ли текущий пользователь админом или владельцем аккаунта
+    if not current_user.is_admin and current_user.id != user_id:
         raise HTTPException(status_code=403, detail="Нет доступа")
 
+    # Обновляем данные пользователя, если такой существует
     user = crud.update_user_active(db, user_id, active_data.is_active)
     if not user:
         raise HTTPException(status_code=404, detail="Пользователь не найден")
@@ -162,9 +186,17 @@ async def update_user_active(
 
 @app.get("/users/{user_id}", response_model=schemas.User)
 async def get_user_data(user_id: int, db: Session = Depends(get_db)):
+    """
+    Эндпоинт для получения данных о пользователе
+    :param user_id: id пользователя
+    :param db: сессия БД
+    :return: пользователь
+    """
+    # Получаем данные о пользователе
     user = crud.get_user(db, user_id)
     if not user:
         raise HTTPException(404, "Пользователь не найден")
+    # Возвращаем, если такой пользователь существует
     return user
 
 
@@ -175,9 +207,17 @@ async def get_current_user_tracks(
         skip: int = Query(0, ge=0, description="Количество пропускаемых записей"),
         limit: int = Query(10, le=100, description="Максимальное количество записей"),
 ):
+    """
+    Эндпоинт для получения треков текущего пользователя с настройками
+    :param db: сессия БД
+    :param current_user: текущий пользователь
+    :param skip: количество пропускаемых записей
+    :param limit: максимальное количество записей
+    :return:
+    """
+    # Получаем треки текущего пользователя с настройками и их общее количество в БД
     tracks = crud.get_tracks_by_user(db, current_user.id, skip, limit)
-
-    total_tracks = len(db.query(models.Track).filter(models.Track.user_id == current_user.id).all())
+    total_tracks = db.query(models.Track).filter(models.Track.user_id == current_user.id).count()
 
     return {
         "tracks": tracks,
@@ -193,11 +233,21 @@ async def get_all_users(
         db: Session = Depends(get_db),
         current_user: models.User = Depends(get_current_user)
 ):
+    """
+    Эндпоинт для получения пользователей с настройками
+    :param skip: количество пропускаемых записей
+    :param limit: максимальное количество записей
+    :param db: сессия БД
+    :param current_user: текущий пользователь
+    :return: список пользователей
+    """
+    # Если текущий пользователь не админ, то не пропускаем дальше
     if not current_user.is_admin:
         raise HTTPException(status_code=403, detail="Нет доступа")
 
+    # Получаем пользователей и их общее количество в БД
     users = crud.get_all_users(db, skip, limit, current_user.id)
-    total = len(db.query(models.User).all())
+    total = db.query(models.User).count()
 
     return {
         "users": users,
@@ -206,9 +256,6 @@ async def get_all_users(
         "limit": limit
     }
 
-@app.get("/protected")
-async def protected_route(user: schemas.User = Depends(get_current_user)):
-    return {"message": f"Hello {user.username}, this is protected!"}
 
 @app.get("/tracks/load", response_model=schemas.TrackPaginate)
 async def get_all_tracks(
@@ -217,7 +264,17 @@ async def get_all_tracks(
         skip: int = Query(0, ge=0, description="Количество пропускаемых записей"),
         limit: int = Query(10, le=100, description="Максимальное количество записей"),
 ):
+    """
+    Эндпоинт для получения треков с настройками
+    :param db: сессия БД
+    :param current_user: текущий пользователь
+    :param skip: количество пропускаемых записей
+    :param limit: максимальное количество записей
+    :return: список треков
+    """
+    # Получаем треки с заданными параметрами
     tracks = crud.get_tracks(db, skip=skip, limit=limit)
+    # Считаем общее количество треков в БД
     total_tracks = db.query(models.Track).count()
 
     # Добавляем флаг избранного для авторизованных пользователей
@@ -236,6 +293,7 @@ async def get_all_tracks(
         "limit": limit
     }
 
+
 @app.post("/tracks/upload")
 async def upload_track(
     title: str = Form(...),
@@ -244,18 +302,34 @@ async def upload_track(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user)
 ):
+    """
+    Эндпоинт для загрузки нового трека
+    :param title: название трека
+    :param description: описание трека
+    :param file: .gpx файл трека
+    :param db: сессия БД
+    :param current_user: текущий пользователь
+    :return: информация о треке
+    """
     # Проверка формата файла
     if not file.filename.endswith('.gpx'):
         raise HTTPException(400, "Неверный формат файла (Только .gpx)")
+
+    if not title:
+        raise HTTPException(400, "Название не может быть пустым")
 
     # Чтение и парсинг GPX
     contents = await file.read()
     points, stats = gpx_utils.parse_gpx(contents.decode('utf-8'))
 
+    if len(points) == 0:
+        raise HTTPException(400, "Трек должен иметь хотя бы одну координату")
+
     # Генерация изображения
     image = bytes(1)#gpx_utils.generate_track_image(points)
     region = gpx_utils.get_track_region(points)
 
+    # Создание объекта трека
     track_data_for_create = schemas.TrackCreate(
         title=title,
         description=description,
@@ -265,6 +339,7 @@ async def upload_track(
         difficulty=stats["difficulty"],
     )
 
+    # Создание трека в БД
     track = crud.create_track_with_points(
         db,
         track_data_for_create,
@@ -273,16 +348,22 @@ async def upload_track(
         current_user.id
     )
 
-    image_base64 = base64.b64encode(image).decode('utf-8')
-
     return {
         "track": track,
         "points": points,
         "stats": stats
     }
 
+
 @app.get("/tracks/{track_id}", response_model=schemas.TrackDetail)
-def get_track_details(track_id: int, db: Session = Depends(get_db)):
+async def get_track_details(track_id: int, db: Session = Depends(get_db)):
+    """
+    Эндпоинт для получения детальной информации о треке
+    :param track_id: id трека
+    :param db: сессия БД
+    :return:
+    """
+    # Получаем детальную информацию
     track = crud.get_track_with_details(db, track_id)
     if not track:
         raise HTTPException(404, "Трек не найден")
@@ -296,27 +377,47 @@ async def update_track(
         db: Session = Depends(get_db),
         current_user: models.User = Depends(get_current_user)
 ):
-    # Проверяем, что трек существует и принадлежит пользователю
+    """
+    Эндпоинт для изменения данных о треке
+    :param track_id: id трека
+    :param track_data: новая информация о треке
+    :param db: сессия БД
+    :param current_user: текущий пользователь
+    :return:
+    """
+    # Проверяем, что трек существует и принадлежит пользователю или пользователь админ
     track = crud.get_track(db, track_id)
-    if not current_user.is_admin and (not track or track.user_id != current_user.id):
+    if not track or (track.user_id != current_user.id and not current_user.is_admin):
         raise HTTPException(status_code=404, detail="Трек не найден или у вас нет прав")
 
+    if not track_data.title:
+        raise HTTPException(400, "Название не может быть пустым")
+
+    # Обновляем данные трека
     updated_track = crud.update_track(db, track_id, track_data)
     if not updated_track:
         raise HTTPException(status_code=404, detail="Трек не найден")
 
     return updated_track
 
-# Удаление трека
+
 @app.delete("/tracks/{track_id}")
 async def delete_track(
         track_id: int,
         db: Session = Depends(get_db),
         current_user: models.User = Depends(get_current_user)
 ):
+    """
+    Эндпоинт для удаления трека
+    :param track_id: id трека
+    :param db: сессия БД
+    :param current_user: текущий пользователь
+    :return: сообщение о статусе
+    """
+    # Получаем трек из БД
     track = crud.get_track(db, track_id)
 
-    # Проверяем, что трек принадлежит пользователю
+    # Проверяем, что трек принадлежит пользователю или пользователь админ
     if not track or (track.user_id != current_user.id and not current_user.is_admin):
         raise HTTPException(status_code=404, detail="Отказано в доступе")
 
@@ -326,17 +427,25 @@ async def delete_track(
     return {"message": "Трек успешно удалён"}
 
 
-# Добавим эндпоинты для работы с избранным
 @app.post("/tracks/{track_id}/favorite", response_model=schemas.Track)
 async def favorite_track(
         track_id: int,
         db: Session = Depends(get_db),
         current_user: models.User = Depends(get_current_user)
 ):
+    """
+    Эндпоинт для добавления трека в избранное
+    :param track_id: id трека
+    :param db: сессия БД
+    :param current_user: текущий пользователь
+    :return: добавленный трек
+    """
+    # Получаем трек из БД
     track = crud.get_track(db, track_id)
     if not track:
         raise HTTPException(status_code=404, detail="Трек не найден")
 
+    # Добавляем в избранное текущего пользователя, если такой трек есть
     crud.add_to_favorites(db, current_user.id, track_id)
     # Обновляем флаг избранного
     track.is_favorite = True
@@ -349,10 +458,19 @@ async def unfavorite_track(
         db: Session = Depends(get_db),
         current_user: models.User = Depends(get_current_user)
 ):
+    """
+    Эндпоинт для удаления трека из избранного
+    :param track_id: id трека
+    :param db: сессия БД
+    :param current_user: текущий пользователь
+    :return: удалённый трек
+    """
+    # Получаем трек из БД
     track = crud.get_track(db, track_id)
     if not track:
         raise HTTPException(status_code=404, detail="Трек не найден")
 
+    # Удаляем из избранного текущего пользователя, если такой трек есть
     crud.remove_from_favorites(db, current_user.id, track_id)
     # Обновляем флаг избранного
     track.is_favorite = False
@@ -365,6 +483,15 @@ async def create_comment(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user)
 ):
+    """
+    Эндпоинт для создания комментария к треку
+    :param track_id: id трека
+    :param comment_data: содержимое комментария
+    :param db: сессия БД
+    :param current_user: текущий пользователь
+    :return: полная информация ок комментарии
+    """
+    # Создаём комментарий
     db_comment = crud.create_comment(db, comment_data, current_user.id, track_id)
     return db_comment
 
@@ -375,6 +502,14 @@ async def get_favorite_tracks(
         skip: int = Query(0, ge=0, description="Количество пропускаемых записей"),
         limit: int = Query(10, le=100, description="Максимальное количество записей"),
 ):
+    """
+    Эндпоинт для получения избранных треков пользователя
+    :param db: сессия БД
+    :param current_user: текущий пользователь
+    :param skip: количество пропускаемых записей
+    :param limit: максимальное количество записей
+    :return: избранные треки и настройки пагинации
+    """
     tracks = crud.get_favorite_tracks(db, current_user.id, skip, limit)
     total_tracks = db.query(models.Favorite).filter(
         models.Favorite.user_id == current_user.id
@@ -389,6 +524,36 @@ async def get_favorite_tracks(
         "skip": skip,
         "limit": limit
     }
+
+@app.get("/tracks/{track_id}/fire_risk", response_class=HTMLResponse)
+async def get_fire_risk_map(
+    request: Request,
+    track_id: int,
+    db: Session = Depends(get_db)
+):
+    """
+    Эндпоинт для получения карты с оценкой пожароопасности для трека
+    :param request: запрос
+    :param track_id: id трека для которого делается оценка
+    :param db: сессия БД
+    :return: HTML код карты
+    """
+
+    try:
+        # Генерируем HTML карты
+        map_html = generate_risk_map(track_id, db)
+
+        # Возвращаем полноценную HTML страницу
+        return templates.TemplateResponse(
+            "fire_risk.html",
+            {
+                "request": request,
+                "map_html": map_html,
+                "track_id": track_id
+            }
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)

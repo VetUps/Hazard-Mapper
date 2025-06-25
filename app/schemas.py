@@ -130,31 +130,6 @@ class TrackPoint(TrackPointBase):
     class Config:
         orm_mode = True
 
-# Схемы прогнозирования
-class FireForecastBase(BaseModel):
-    forecast_date: date
-    temp: float | None = None
-    humidity: float | None = None
-    wind_speed: float | None = None
-    ndvi: float | None = None
-    evi: float | None = None
-    psri: float | None = None
-    ndwi: float | None = None
-    msi: float | None = None
-    danger_level: int
-
-class FireForecastCreate(FireForecastBase):
-    pass
-
-class FireForecast(FireForecastBase):
-    id: int
-    track_id: int
-    track_point_id: int
-    calculated_at: datetime
-
-    class Config:
-        orm_mode = True
-
 # Схемы избранного
 class FavoriteBase(BaseModel):
     track_id: int

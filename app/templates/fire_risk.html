@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Карта пожароопасности трека #{{ track_id }}</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            height: 100%;
+            font-family: Arial, sans-serif;
+        }
+        #map-container {
+            height: 100vh;
+            width: 100%;
+        }
+        .loading-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(255, 255, 255, 0.9);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+        .spinner {
+            border: 5px solid #f3f3f3;
+            border-top: 5px solid #42b983;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            animation: spin 1s linear infinite;
+            margin-bottom: 20px;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div id="map-container">{{ map_html|safe }}</div>
+
+    <script>
+        // После загрузки страницы инициализируем карту
+        document.addEventListener('DOMContentLoaded', function() {
+            // Удаляем прелоадер
+            const overlay = document.querySelector('.loading-overlay');
+            if (overlay) {
+                overlay.style.display = 'none';
+            }
+
+            // Инициализация карты
+            if (typeof L !== 'undefined') {
+                // Убедимся, что карта занимает весь контейнер
+                setTimeout(() => {
+                    const map = Object.values(L.Map._instances)[0];
+                    if (map) {
+                        map.invalidateSize();
+                    }
+                }, 100);
+            }
+        });
+    </script>
+</body>
+</html>

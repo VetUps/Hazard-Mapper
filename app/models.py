@@ -33,7 +33,6 @@ class Track(Base):
 
     owner = relationship("User", back_populates="tracks")
     points = relationship("TrackPoint", back_populates="track", cascade="all, delete-orphan", passive_deletes=True)
-    forecasts = relationship("FireForecast", back_populates="track", cascade="all, delete-orphan", passive_deletes=True)
     comments = relationship("Comment", back_populates="track", cascade="all, delete-orphan", passive_deletes=True)
     images = relationship("TrackImage", back_populates="track", cascade="all, delete-orphan", passive_deletes=True)
 
@@ -50,29 +49,6 @@ class TrackPoint(Base):
     point_time = Column(TIMESTAMP)
 
     track = relationship("Track", back_populates="points")
-    forecasts = relationship("FireForecast", back_populates="point")
-
-
-class FireForecast(Base):
-    __tablename__ = "fire_forecasts"
-
-    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
-    track_id = Column(Integer, ForeignKey("tracks.id"), nullable=False)
-    track_point_id = Column(Integer, ForeignKey("track_points.id"), nullable=False)
-    forecast_date = Column(Date, nullable=False)
-    temp = Column(Float)
-    humidity = Column(Float)
-    wind_speed = Column(Float)
-    ndvi = Column(Float)
-    evi = Column(Float)
-    psri = Column(Float)
-    ndwi = Column(Float)
-    msi = Column(Float)
-    danger_level = Column(Integer, nullable=False)
-    calculated_at = Column(TIMESTAMP, server_default="CURRENT_TIMESTAMP")
-
-    track = relationship("Track", back_populates="forecasts")
-    point = relationship("TrackPoint", back_populates="forecasts")
 
 
 class TrackImage(Base):
